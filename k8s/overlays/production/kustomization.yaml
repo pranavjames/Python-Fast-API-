@@ -1,0 +1,71 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  # Uncomment once External Secrets Operator is installed:
+  # - ../../base/external-secret.example.yaml
+
+# Immutable, versioned image from ECR. CI updates newTag on each release
+# (e.g. `kustomize edit set image taskflow-api=...:${GIT_SHA}`).
+images:
+  - name: taskflow-api
+    newName: <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/taskflow-api
+    newTag: "1.0.0"
+
+patches:
+  # --- Application configuration -------------------------------------------------
+  - target:
+      kind: ConfigMap
+      name: taskflow-api-config
+    patch: |-
+      - op: replace
+        path: /data/MYSQL_HOST
+        value: "<RDS_ENDPOINT>"
+
+  # --- Internal NLB ------------------------------------------------------------------
+  - target:
+      kind: Service
+      name: taskflow-api
+    patch: |-
+      - op: add
+        path: /metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-name
+        value: taskflow-api-internal
+      - op: add
+        path: /metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-subnets
+        value: "<PRIVATE_SUBNET_ID_A>,<PRIVATE_SUBNET_ID_B>,<PRIVATE_SUBNET_ID_C>"
+      - op: add
+        path: /metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-additional-resource-tags
+        value: "Environment=production,Application=taskflow"
+      # Only sources inside the VPC (i.e. the API Gateway VPC Link ENIs) may reach the NLB.
+      - op: replace
+        path: /spec/loadBalancerSourceRanges
+        value: ["<VPC_CIDR>"]
+
+  # --- Autoscaling bounds -----------------------------------------------------------
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: taskflow-api
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+      - op: replace
+        path: /spec/maxReplicas
+        value: 12
+
+  # --- Network policy CIDRs ---------------------------------------------------------
+  - target:
+      kind: NetworkPolicy
+      name: taskflow-api-ingress
+    patch: |-
+      - op: replace
+        path: /spec/ingress/0/from/0/ipBlock/cidr
+        value: "<VPC_CIDR>"
+  - target:
+      kind: NetworkPolicy
+      name: taskflow-allow-egress
+    patch: |-
+      - op: replace
+        path: /spec/egress/1/to/0/ipBlock/cidr
+        value: "<DB_SUBNETS_CIDR>"

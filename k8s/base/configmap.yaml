@@ -1,0 +1,40 @@
+# Non-sensitive configuration. Secrets (SECRET_KEY, MYSQL_PASSWORD) live in the
+# `taskflow-api-secrets` Secret — see secret.example.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: taskflow-api-config
+data:
+  APP_NAME: "TaskFlow API"
+  ENVIRONMENT: "production"
+  DEBUG: "false"
+  DOCS_ENABLED: "false"
+  LOG_LEVEL: "INFO"
+  LOG_JSON: "true"
+
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  REFRESH_TOKEN_EXPIRE_MINUTES: "10080"
+  BCRYPT_ROUNDS: "12"
+  # CORS is usually handled at API Gateway; set origins here only if the app must do it.
+  CORS_ORIGINS: ""
+
+  # Managed MySQL (e.g. Amazon RDS / Aurora MySQL) reachable from the private subnets.
+  MYSQL_HOST: "taskflow.cluster-xxxxxxxx.us-east-1.rds.amazonaws.com"
+  MYSQL_PORT: "3306"
+  MYSQL_DB: "taskflow"
+
+  # Per-pod pool. Keep (DB_POOL_SIZE + DB_MAX_OVERFLOW) x HPA maxReplicas
+  # below the database's max_connections.
+  DB_POOL_SIZE: "5"
+  DB_MAX_OVERFLOW: "5"
+  DB_POOL_RECYCLE_SECONDS: "1800"
+
+  # One uvicorn worker per pod: scale horizontally with the HPA instead of
+  # with in-pod processes, so CPU metrics map cleanly to load.
+  WEB_CONCURRENCY: "1"
+  # Migrations run in a dedicated Job (migration-job.yaml), never on pod start,
+  # so that multiple replicas don't race each other.
+  RUN_MIGRATIONS: "false"
+  # Pods are only reachable through the internal NLB (enforced by NetworkPolicy),
+  # so trust X-Forwarded-* headers set by API Gateway.
+  FORWARDED_ALLOW_IPS: "*"

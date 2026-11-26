@@ -191,6 +191,8 @@ alembic check                                               # fails if models an
 
 ## Production notes
 
+- **Kubernetes (EKS):** manifests and the API Gateway template are in `k8s/` and `infra/aws/`;
+  see [k8s/README.md](k8s/README.md).
 - **Secrets:** set a long random `SECRET_KEY`; the app refuses to start in `ENVIRONMENT=production`
   with the default key, a key shorter than 32 chars, `DEBUG=true` or `BCRYPT_ROUNDS < 12`.
 - **Docs:** set `DOCS_ENABLED=false` to hide `/docs`, `/redoc` and the OpenAPI schema.

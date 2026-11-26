@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: taskflow-api-config
+  namespace: taskflow-poc
+data:
+  APP_NAME: "TaskFlow API (POC)"
+  # "staging" skips the strict production checks while still behaving like a real deployment.
+  ENVIRONMENT: "staging"
+  DEBUG: "false"
+  # Swagger UI stays on for the POC: http://<load-balancer>/docs
+  DOCS_ENABLED: "true"
+  LOG_LEVEL: "INFO"
+  LOG_JSON: "true"
+
+  # POC ONLY — plain-text values. Use a proper secret before anything real.
+  SECRET_KEY: "poc-only-secret-key-change-me-0123456789abcdef"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+  REFRESH_TOKEN_EXPIRE_MINUTES: "10080"
+
+  # Points at the in-cluster MySQL Service (01-mysql.yaml).
+  MYSQL_HOST: "mysql"
+  MYSQL_PORT: "3306"
+  MYSQL_DB: "taskflow"
+  MYSQL_USER: "taskflow"
+  MYSQL_PASSWORD: "poc-taskflow-password"
+
+  WEB_CONCURRENCY: "1"
+  # The container applies Alembic migrations on start-up.
+  RUN_MIGRATIONS: "true"
+  FORWARDED_ALLOW_IPS: "*"

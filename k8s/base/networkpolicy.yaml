@@ -1,0 +1,61 @@
+# Default-deny for the namespace, then explicit allows.
+# Enforcement requires a policy engine: on EKS enable the VPC CNI network policy
+# agent (`enableNetworkPolicy: "true"`) or run Calico/Cilium.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: taskflow-api-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: taskflow-api
+      app.kubernetes.io/component: api
+  policyTypes: ["Ingress"]
+  ingress:
+    # Traffic from the internal NLB (health checks + VPC Link traffic) originates
+    # from IPs inside the VPC. The CIDR is set per environment in the overlay.
+    - from:
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - port: 8000
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: taskflow-allow-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: taskflow-api
+  policyTypes: ["Egress"]
+  egress:
+    # DNS (CoreDNS)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # MySQL (RDS) inside the VPC. Narrow the CIDR to the DB subnets in the overlay.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - port: 3306
+          protocol: TCP

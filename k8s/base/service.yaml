@@ -1,0 +1,48 @@
+# Internal Network Load Balancer, provisioned by the AWS Load Balancer Controller.
+# API Gateway reaches it privately through a VPC Link — it is never exposed to the internet.
+#
+# Prerequisites:
+#   * AWS Load Balancer Controller installed in the cluster.
+#   * Private subnets tagged `kubernetes.io/role/internal-elb: 1` (used for subnet auto-discovery),
+#     or set the `aws-load-balancer-subnets` annotation explicitly (see the production overlay).
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskflow-api
+  labels:
+    app.kubernetes.io/component: api
+  annotations:
+    # Use the AWS Load Balancer Controller (not the legacy in-tree controller) to create an NLB.
+    service.beta.kubernetes.io/aws-load-balancer-type: external
+    # Private NLB in the private subnets.
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+    # Register pod IPs directly (no NodePort hop); works with the VPC CNI.
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    # Target health = application readiness (includes DB connectivity).
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: HTTP
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: traffic-port
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /api/v1/health/ready
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
+    # Shorter than the pod's preStop sleep window plus graceful shutdown.
+    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: >-
+      deregistration_delay.timeout_seconds=30,
+      deregistration_delay.connection_termination.enabled=true
+spec:
+  type: LoadBalancer
+  # Let the AWS LB Controller manage the NLB (required for "external" type on newer clusters).
+  loadBalancerClass: service.k8s.aws/nlb
+  selector:
+    app.kubernetes.io/name: taskflow-api
+    app.kubernetes.io/component: api
+  # The NLB's security group only admits these CIDRs. Overridden with the real VPC CIDR
+  # in the overlay so only the API Gateway VPC Link (inside the VPC) can connect.
+  loadBalancerSourceRanges:
+    - 10.0.0.0/16
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

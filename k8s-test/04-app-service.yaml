@@ -1,0 +1,29 @@
+# Internal load balancer in the private subnets (reachable from inside the VPC,
+# e.g. via API Gateway VPC Link, a bastion, or VPN).
+#
+# Both annotation styles are set so this works whether the cluster uses the
+# AWS Load Balancer Controller (creates an NLB) or the built-in cloud provider.
+# Private subnets must be tagged `kubernetes.io/role/internal-elb: 1` for discovery.
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskflow-api
+  namespace: taskflow-poc
+  labels:
+    app: taskflow-api
+  annotations:
+    # Built-in (in-tree) AWS cloud provider
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    # AWS Load Balancer Controller
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /api/v1/health/live
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: HTTP
+spec:
+  type: LoadBalancer
+  selector:
+    app: taskflow-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

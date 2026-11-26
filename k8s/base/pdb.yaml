@@ -1,0 +1,12 @@
+# Keeps the API available during voluntary disruptions (node drains, upgrades,
+# Karpenter/Cluster Autoscaler consolidation).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: taskflow-api
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taskflow-api
+      app.kubernetes.io/component: api

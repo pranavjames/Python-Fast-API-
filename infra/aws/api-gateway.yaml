@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Public API Gateway (HTTP API) for TaskFlow. Forwards all requests through a VPC Link
+  to the internal NLB created by the `taskflow-api` Kubernetes Service in private subnets.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Private subnets for the VPC Link ENIs (same subnets/AZs as the NLB).
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: VPC CIDR; the VPC Link may only send traffic inside it.
+  NlbListenerArn:
+    Type: String
+    Description: >-
+      ARN of the internal NLB's port-80 listener (created by the AWS Load Balancer Controller).
+      Look it up after the Kubernetes Service is provisioned - see k8s/README.md.
+  StageName:
+    Type: String
+    Default: $default
+  ThrottlingRateLimit:
+    Type: Number
+    Default: 500
+    Description: Steady-state requests per second across the API.
+  ThrottlingBurstLimit:
+    Type: Number
+    Default: 1000
+  CorsAllowOrigins:
+    Type: CommaDelimitedList
+    Default: "https://app.example.com"
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+
+Resources:
+  VpcLinkSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: TaskFlow API Gateway VPC Link
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - Description: To internal NLB
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref VpcCidr
+      Tags:
+        - { Key: Name, Value: taskflow-apigw-vpclink }
+
+  VpcLink:
+    Type: AWS::ApiGatewayV2::VpcLink
+    Properties:
+      Name: taskflow-vpclink
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - !Ref VpcLinkSecurityGroup
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: taskflow-api
+      ProtocolType: HTTP
+      # Force clients through the stage URL / custom domain (no raw execute-api endpoint)
+      # by setting this to true once a custom domain is attached.
+      DisableExecuteApiEndpoint: false
+      CorsConfiguration:
+        AllowOrigins: !Ref CorsAllowOrigins
+        AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        AllowHeaders: [Authorization, Content-Type, X-Request-ID]
+        ExposeHeaders: [X-Request-ID]
+        MaxAge: 600
+
+  NlbIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: HTTP_PROXY
+      IntegrationMethod: ANY
+      ConnectionType: VPC_LINK
+      ConnectionId: !Ref VpcLink
+      IntegrationUri: !Ref NlbListenerArn
+      PayloadFormatVersion: "1.0"
+      # Must stay below API Gateway's 30s hard limit.
+      TimeoutInMillis: 29000
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: $default
+      Target: !Sub integrations/${NlbIntegration}
+
+  AccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/apigateway/taskflow-api
+      RetentionInDays: !Ref LogRetentionDays
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: !Ref StageName
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingRateLimit: !Ref ThrottlingRateLimit
+        ThrottlingBurstLimit: !Ref ThrottlingBurstLimit
+        DetailedMetricsEnabled: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt AccessLogGroup.Arn
+        Format: >-
+          {"requestId":"$context.requestId","ip":"$context.identity.sourceIp",
+          "requestTime":"$context.requestTime","method":"$context.httpMethod",
+          "path":"$context.path","status":"$context.status",
+          "latencyMs":"$context.responseLatency",
+          "integrationLatencyMs":"$context.integrationLatency",
+          "integrationError":"$context.integrationErrorMessage",
+          "responseLength":"$context.responseLength"}
+
+Outputs:
+  ApiEndpoint:
+    Description: Public base URL (append /api/v1/...)
+    Value: !GetAtt HttpApi.ApiEndpoint
+  VpcLinkSecurityGroupId:
+    Value: !Ref VpcLinkSecurityGroup
