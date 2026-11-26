@@ -1,0 +1,40 @@
+# Argo CD Application for the TaskFlow API proof of concept.
+# Deploys the plain manifests in k8s-test/ from the GitHub repo into the `taskflow-poc` namespace.
+#
+# Apply to the cluster where Argo CD runs:
+#   kubectl apply -n argocd -f application-test.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: taskflow-api-poc
+  namespace: argocd
+  # Delete the deployed resources when this Application is deleted.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/pranavjames/Python-Fast-API-.git
+    targetRevision: main
+    path: k8s-test
+    directory:
+      recurse: false
+      # Only the manifests; skips README.md.
+      include: "*.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: taskflow-poc
+  syncPolicy:
+    automated:
+      # Remove resources from the cluster when they're deleted from git.
+      prune: true
+      # Revert manual changes made in the cluster back to what's in git.
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
