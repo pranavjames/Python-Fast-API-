@@ -13,9 +13,9 @@ metadata:
     app: taskflow-api
   annotations:
     # Built-in (in-tree) AWS cloud provider
-    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    service.beta.kubernetes.io/aws-load-balancer-internal: "false"
     # AWS Load Balancer Controller
-    service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
     service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /api/v1/health/live
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: HTTP
